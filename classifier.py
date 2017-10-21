@@ -133,38 +133,46 @@ def test(tt_list, sess, accuracy,x,y_,filepath,scale,crop,show):
 
     test_result = sess.run(accuracy, feed_dict={x: test_features, y_: test_labels})
     print('Testing:%d (%02.12f)' % (idx - 1, test_result))
-# resize  same
+#
 # Create the model
 # set up to feed an array of images [images, size_of_image]
-def make_graph(numpixels, numclasses):
+def make_graph(numpixels, numclasses, minimize='cross', train_step='sgd'):
     x = tf.placeholder(tf.float32, [None,numpixels])
+
 
     #variables for computation
     #2d array of weights,[pixels, classes]
-    W = tf.Variable(tf.zeros([numpixels,numclasses]))
+    #W = tf.Variable(tf.zeros([numpixels,numclasses]))
+    W= tf.get_variable("W",initializer=tf.zeros([numpixels,numclasses]))
     #W = tf.Variable(tf.zeros([NUMPIXELS,NUMCLASSES],dtype=tf.float32),dtype=tf.float32)
 
     #1d array of bias vars
-    b = tf.Variable(tf.zeros(numclasses))
+    #b = tf.Variable(tf.zeros(numclasses))
+    b = tf.get_variable("b",initializer=tf.zeros(numclasses))
     #b = tf.Variable(tf.zeros(NUMCLASSES,dtype=tf.float32),dtype=tf.float32)
     #the array of 'answers' produced by fxn. of W, x & b, a 1xNUMCLASSES array
     y = tf.nn.softmax(tf.matmul(x, W) + b)
 
     # Define loss and optimizer..why is this 2d?
-    y_ = tf.placeholder(tf.float32, [None,numclasses])
+    y_ = tf.placeholder(tf.float32, [None,numclasses],name="y_")
 
-    #cross_entropy = tf.reduce_mean(-tf.reduce_sum(y_ * tf.log(y), reduction_indices=[1]))
-    cross_entropy = tf.reduce_mean(
+    if minimize == 'simple':
+        cross_entropy = tf.reduce_mean(-tf.reduce_sum(y_ * tf.log(y), reduction_indices=[1]))
+    elif minimize== 'cross':
+        cross_entropy = tf.reduce_mean(
           tf.nn.softmax_cross_entropy_with_logits(labels=y_, logits=y))
-    #train_step = tf.train.GradientDescentOptimizer(0.5).minimize(cross_entropy)
-    train_step = tf.train.AdamOptimizer(1e-4).minimize(cross_entropy)
+
+    if train_step== 'sgd':
+        train_step = tf.train.GradientDescentOptimizer(0.5).minimize(cross_entropy)
+    elif train_step == 'adam':
+        train_step = tf.train.AdamOptimizer(1e-4).minimize(cross_entropy)
 
     #sess = tf.InteractiveSession()
     sess = tf.InteractiveSession(config = tf.ConfigProto(log_device_placement=True))
     tf.global_variables_initializer().run(session=sess)
 
-    correct_prediction = tf.equal(tf.argmax(y,1), tf.argmax(y_,1))
-    accuracy = tf.reduce_mean(tf.cast(correct_prediction, tf.float32))
+    correct_prediction = tf.equal(tf.argmax(y,1), tf.argmax(y_,1),name='correct_prediction')
+    accuracy = tf.reduce_mean(tf.cast(correct_prediction, tf.float32,name='accuracy'))
 
     return x,y,y_,train_step,sess,accuracy
 
@@ -177,6 +185,14 @@ def parseArgs():
                         default='carvana',
                         choices=['carvana', 'mnist'],
                         help='Carvana or MNIST?')
+    parser.add_argument('--minimize', type=str,
+                        default='simple',
+                        choices=['simple', 'cross'],
+                        help='Simple or X-entropy?')
+    parser.add_argument('--train_step', type=str,
+                        default='sgd',
+                        choices=['sgd', 'adam'],
+                        help='SGD or Adam optimization?')
     parser.add_argument('--env', type=str,
                         default='pc',
                         choices=['pc', 'aws'],
@@ -205,6 +221,9 @@ def parseArgs():
     parser.add_argument('--chunks', type=int,
                         default=20,
                         help='Cut samples into this many chunks')
+    parser.add_argument('--tb_dir', type=str,
+                        default='/Users/eric fowler/tensorlog/',
+                        help='Directory For Tensorboard log')
     return parser.parse_known_args()
 
 def main():
@@ -220,6 +239,7 @@ def main():
     CHUNKS = FLAGS.chunks
     DATAPATH=FLAGS.datapath
     SAMPLE_FILE = DATAPATH + FLAGS.sample
+    TB_DIR = FLAGS.tb_dir
     NUMPIXELS = get_pixels(crop=CROP, filename=SAMPLE_FILE)
 
     IMAGES=FLAGS.images
@@ -237,6 +257,8 @@ def main():
     tensor_list=None
 
     x,y,y_,train_step,sess,accuracy=make_graph(NUMPIXELS,NUMCLASSES)
+
+    sum_writer = tf.summary.FileWriter(TB_DIR, sess.graph)
 
     trainer = [training_list[i:i+len(training_list)//CHUNKS] for i in range(0,len(training_list),len(training_list)//CHUNKS)]
     tester=[testing_list[i:i+len(testing_list)//CHUNKS] for i in range(0,len(testing_list),len(testing_list)//CHUNKS)]
