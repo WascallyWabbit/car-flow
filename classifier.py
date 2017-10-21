@@ -241,6 +241,8 @@ def main():
     SAMPLE_FILE = DATAPATH + FLAGS.sample
     TB_DIR = FLAGS.tb_dir
     NUMPIXELS = get_pixels(crop=CROP, filename=SAMPLE_FILE)
+    MINIMIZE =  FLAGS.minimize
+    TRAIN_STEP = FLAGS.train_step
 
     IMAGES=FLAGS.images
 
@@ -256,7 +258,7 @@ def main():
     testing_list = tensor_list[int(7*tensor_list_len/8):]
     tensor_list=None
 
-    x,y,y_,train_step,sess,accuracy=make_graph(NUMPIXELS,NUMCLASSES)
+    x,y,y_,train_step,sess,accuracy=make_graph(NUMPIXELS,NUMCLASSES,minimize=MINIMIZE,train_step=TRAIN_STEP)
 
     sum_writer = tf.summary.FileWriter(TB_DIR, sess.graph)
 
