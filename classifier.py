@@ -1,10 +1,10 @@
 import numpy as np
 import tensorflow as tf
 import os
-from PIL import  Image
+from PIL import Image
 import random
 import matplotlib.pyplot as plt
-import sys
+import csv
 import argparse
 
 file_path_test = '/Users/Eric Fowler/Downloads/carvana/test/'
@@ -120,7 +120,7 @@ def train(train_step, sess, tr_list,x,y_,epochs,numclasses,show,crop,filepath,sc
 
 def test(tt_list, sess, accuracy,x,y_,filepath,scale,crop,show):
     idx = 0
-
+    results = []
     test_features = []
     test_labels = []
     for filename, labels_onehot in tt_list:
@@ -132,7 +132,10 @@ def test(tt_list, sess, accuracy,x,y_,filepath,scale,crop,show):
         idx += 1
 
     test_result = sess.run(accuracy, feed_dict={x: test_features, y_: test_labels})
+
     print('Testing:%d (%02.12f)' % (idx - 1, test_result))
+    results.append(test_result)
+    return results
 #
 # Create the model
 # set up to feed an array of images [images, size_of_image]
@@ -151,16 +154,15 @@ def make_graph(numpixels, numclasses, minimize='cross', train_step='sgd'):
     b = tf.get_variable("b",initializer=tf.zeros(numclasses))
     #b = tf.Variable(tf.zeros(NUMCLASSES,dtype=tf.float32),dtype=tf.float32)
     #the array of 'answers' produced by fxn. of W, x & b, a 1xNUMCLASSES array
-    y = tf.nn.softmax(tf.matmul(x, W) + b)
+    y = tf.nn.softmax(tf.matmul(x, W) + b,name="softmaxxx")
 
-    # Define loss and optimizer..why is this 2d?
+    # Define loss and optimizer
     y_ = tf.placeholder(tf.float32, [None,numclasses],name="y_")
 
     if minimize == 'simple':
         cross_entropy = tf.reduce_mean(-tf.reduce_sum(y_ * tf.log(y), reduction_indices=[1]))
     elif minimize== 'cross':
-        cross_entropy = tf.reduce_mean(
-          tf.nn.softmax_cross_entropy_with_logits(labels=y_, logits=y))
+        cross_entropy = tf.reduce_mean(tf.nn.softmax_cross_entropy_with_logits(labels=y_, logits=y))
 
     if train_step== 'sgd':
         train_step = tf.train.GradientDescentOptimizer(0.5).minimize(cross_entropy)
@@ -175,6 +177,14 @@ def make_graph(numpixels, numclasses, minimize='cross', train_step='sgd'):
     accuracy = tf.reduce_mean(tf.cast(correct_prediction, tf.float32,name='accuracy'))
 
     return x,y,y_,train_step,sess,accuracy
+
+
+def pickle_results(test_csv, results):
+
+    with open(test_csv, 'w') as fp:
+        writer = csv.writer(fp,dialect=csv.unix_dialect)
+        for r in results:
+            writer.writerow(r)
 
 def parseArgs():
     parser = argparse.ArgumentParser()
@@ -221,6 +231,9 @@ def parseArgs():
     parser.add_argument('--chunks', type=int,
                         default=20,
                         help='Cut samples into this many chunks')
+    parser.add_argument('--test_csv', type=str,
+                        default='testout.csv',
+                        help='File and path for storing test output file')
     parser.add_argument('--tb_dir', type=str,
                         default='/Users/eric fowler/tensorlog/',
                         help='Directory For Tensorboard log')
@@ -229,34 +242,33 @@ def parseArgs():
 def main():
     FLAGS, unparsed = parseArgs()
 
-    TARGET = FLAGS.target
-    ENVIRONMENT=FLAGS.env
-    NUMCLASSES = FLAGS.numclasses
-    CROP = FLAGS.crop
-    SHOW=FLAGS.show
-    SCALE = FLAGS.scale
-    EPOCHS = FLAGS.epochs
-    CHUNKS = FLAGS.chunks
-    DATAPATH=FLAGS.datapath
+    TARGET      = FLAGS.target
+    ENVIRONMENT = FLAGS.env
+    NUMCLASSES  = FLAGS.numclasses
+    CROP        = FLAGS.crop
+    SHOW        = FLAGS.show
+    SCALE       = FLAGS.scale
+    EPOCHS      = FLAGS.epochs
+    CHUNKS      = FLAGS.chunks
+    DATAPATH    = FLAGS.datapath
     SAMPLE_FILE = DATAPATH + FLAGS.sample
-    TB_DIR = FLAGS.tb_dir
-    NUMPIXELS = get_pixels(crop=CROP, filename=SAMPLE_FILE)
-    MINIMIZE =  FLAGS.minimize
-    TRAIN_STEP = FLAGS.train_step
-
-    IMAGES=FLAGS.images
+    TB_DIR      = FLAGS.tb_dir
+    NUMPIXELS   = get_pixels(crop=CROP, filename=SAMPLE_FILE)
+    MINIMIZE    = FLAGS.minimize
+    TRAIN_STEP  = FLAGS.train_step
+    TEST_CSV    = FLAGS.test_csv
+    IMAGES      = FLAGS.images
 
     tensor_list = None
     if TARGET == 'mnist':
         tensor_list=get_mnist_tensor_list(numclasses=NUMCLASSES,path=DATAPATH,num=IMAGES)
-    elif TARGET== 'carvana':
+    elif TARGET == 'carvana':
         tensor_list = get_tensor_list(numclasses=NUMCLASSES, path=DATAPATH, num=IMAGES)
 
     random.shuffle(tensor_list)
     tensor_list_len = int(len(tensor_list))
     training_list = tensor_list[:int(7*tensor_list_len/8)]
     testing_list = tensor_list[int(7*tensor_list_len/8):]
-    tensor_list=None
 
     x,y,y_,train_step,sess,accuracy=make_graph(NUMPIXELS,NUMCLASSES,minimize=MINIMIZE,train_step=TRAIN_STEP)
 
@@ -264,13 +276,12 @@ def main():
 
     trainer = [training_list[i:i+len(training_list)//CHUNKS] for i in range(0,len(training_list),len(training_list)//CHUNKS)]
     tester=[testing_list[i:i+len(testing_list)//CHUNKS] for i in range(0,len(testing_list),len(testing_list)//CHUNKS)]
-
+    test_results=[]
     for chunk in zip(trainer,tester):
         train(tr_list=chunk[0],train_step=train_step,epochs=EPOCHS,numclasses=NUMCLASSES,sess=sess,x=x,y_=y_,crop=CROP,show=SHOW,scale=SCALE,filepath=DATAPATH)
-        test(tt_list=chunk[1],sess=sess,accuracy=accuracy,x=x,y_=y_,scale=SCALE, crop=CROP,show=SHOW,filepath=DATAPATH)
+        test_results.append(test(tt_list=chunk[1],sess=sess,accuracy=accuracy,x=x,y_=y_,scale=SCALE, crop=CROP,show=SHOW,filepath=DATAPATH))
 
-
-
+    pickle_results(TEST_CSV,test_results)
 if __name__ == '__main__':
     main()
 
