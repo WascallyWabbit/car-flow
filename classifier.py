@@ -219,7 +219,10 @@ def parseArgs():
     parser.add_argument('--numclasses', type=int,
                         default=16,
                         help='Carvana=16, MNIST=10')
-    parser.add_argument('--images', type=int,
+    parser.add_argument('--num_test_images', type=int,
+                        default=200000,
+                        help='Number of images to test')
+    parser.add_argument('--num_train_images', type=int,
                         default=200000,
                         help='Number of images to train')
     parser.add_argument('--crop', type=bool,
@@ -265,21 +268,24 @@ def main():
     MINIMIZE    = FLAGS.minimize
     TRAIN_STEP  = FLAGS.train_step
     TEST_CSV    = FLAGS.test_csv
-    IMAGES      = FLAGS.images
+    NUM_TRAIN_IMAGES      = FLAGS.num_train_images
+    NUM_TEST_IMAGES      = FLAGS.num_test_images
+
 
     tensor_list = None
     if TARGET == 'mnist':
-        tensor_list=get_mnist_tensor_list(numclasses=NUMCLASSES,path=TRAIN_DATA_PATH,num=IMAGES)
+        tensor_list=get_mnist_tensor_list(numclasses=NUMCLASSES,path=TRAIN_DATA_PATH,num=NUM_TRAIN_IMAGES)
     elif TARGET == 'carvana':
-        tensor_list = get_tensor_list(numclasses=NUMCLASSES, path=TRAIN_DATA_PATH, num=IMAGES)
+        tensor_list = get_tensor_list(numclasses=NUMCLASSES, path=TRAIN_DATA_PATH, num=NUM_TRAIN_IMAGES)
 
     random.shuffle(tensor_list)
     tensor_list_len = int(len(tensor_list))
     training_list = tensor_list[:]
 #    testing_list = tensor_list[int(7*tensor_list_len/8):]
-    testing_list = get_carvana_test_tensor_list(path=TEST_DATA_PATH)
+    testing_list = get_carvana_test_tensor_list(path=TEST_DATA_PATH, num=NUM_TEST_IMAGES)
 
     x,y,y_,train_step,sess,accuracy=make_graph(NUMPIXELS,NUMCLASSES,minimize=MINIMIZE,train_step=TRAIN_STEP)
+    random.shuffle(testing_list)
 
     sum_writer = tf.summary.FileWriter(TB_DIR, sess.graph)
 
