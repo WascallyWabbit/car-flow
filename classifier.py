@@ -73,6 +73,9 @@ def get_tensor_list(numclasses=16,path='/Users/Eric Fowler/Downloads/carvana/tra
 
     return (list(zip(jpgs[:num], labels[:num])))
 
+def get_carvana_test_tensor_list(numclasses=16,path='/Users/Eric Fowler/Downloads/carvana/test/', num=None):
+    return get_tensor_list(numclasses=numclasses,path=path, num=num)
+
 def read_image(path, fname, show, scale=1.0, crop=True):
    mm = Image.open(path + fname)
    if crop==True:
@@ -188,8 +191,11 @@ def pickle_results(test_csv, results):
 
 def parseArgs():
     parser = argparse.ArgumentParser()
-    parser.add_argument('--datapath', type=str,
+    parser.add_argument('--train_data_path', type=str,
                         default='/users/eric fowler/downloads/carvana/train/',
+                        help='Directory for storing input data')
+    parser.add_argument('--test_data_path', type=str,
+                        default='/users/eric fowler/downloads/carvana/test/',
                         help='Directory for storing input data')
     parser.add_argument('--target', type=str,
                         default='carvana',
@@ -237,6 +243,7 @@ def parseArgs():
     parser.add_argument('--tb_dir', type=str,
                         default='/Users/eric fowler/tensorlog/',
                         help='Directory For Tensorboard log')
+
     return parser.parse_known_args()
 
 def main():
@@ -250,8 +257,9 @@ def main():
     SCALE       = FLAGS.scale
     EPOCHS      = FLAGS.epochs
     CHUNKS      = FLAGS.chunks
-    DATAPATH    = FLAGS.datapath
-    SAMPLE_FILE = DATAPATH + FLAGS.sample
+    TRAIN_DATA_PATH     = FLAGS.train_data_path
+    TEST_DATA_PATH      = FLAGS.test_data_path
+    SAMPLE_FILE = TRAIN_DATA_PATH + FLAGS.sample
     TB_DIR      = FLAGS.tb_dir
     NUMPIXELS   = get_pixels(crop=CROP, filename=SAMPLE_FILE)
     MINIMIZE    = FLAGS.minimize
@@ -261,14 +269,15 @@ def main():
 
     tensor_list = None
     if TARGET == 'mnist':
-        tensor_list=get_mnist_tensor_list(numclasses=NUMCLASSES,path=DATAPATH,num=IMAGES)
+        tensor_list=get_mnist_tensor_list(numclasses=NUMCLASSES,path=TRAIN_DATA_PATH,num=IMAGES)
     elif TARGET == 'carvana':
-        tensor_list = get_tensor_list(numclasses=NUMCLASSES, path=DATAPATH, num=IMAGES)
+        tensor_list = get_tensor_list(numclasses=NUMCLASSES, path=TRAIN_DATA_PATH, num=IMAGES)
 
     random.shuffle(tensor_list)
     tensor_list_len = int(len(tensor_list))
-    training_list = tensor_list[:int(7*tensor_list_len/8)]
-    testing_list = tensor_list[int(7*tensor_list_len/8):]
+    training_list = tensor_list[:]
+#    testing_list = tensor_list[int(7*tensor_list_len/8):]
+    testing_list = get_carvana_test_tensor_list(path=TEST_DATA_PATH)
 
     x,y,y_,train_step,sess,accuracy=make_graph(NUMPIXELS,NUMCLASSES,minimize=MINIMIZE,train_step=TRAIN_STEP)
 
@@ -278,8 +287,8 @@ def main():
     tester=[testing_list[i:i+len(testing_list)//CHUNKS] for i in range(0,len(testing_list),len(testing_list)//CHUNKS)]
     test_results=[]
     for chunk in zip(trainer,tester):
-        train(tr_list=chunk[0],train_step=train_step,epochs=EPOCHS,numclasses=NUMCLASSES,sess=sess,x=x,y_=y_,crop=CROP,show=SHOW,scale=SCALE,filepath=DATAPATH)
-        test_results.append(test(tt_list=chunk[1],sess=sess,accuracy=accuracy,x=x,y_=y_,scale=SCALE, crop=CROP,show=SHOW,filepath=DATAPATH))
+        train(tr_list=chunk[0],train_step=train_step,epochs=EPOCHS,numclasses=NUMCLASSES,sess=sess,x=x,y_=y_,crop=CROP,show=SHOW,scale=SCALE,filepath=TRAIN_DATA_PATH)
+        test_results.append(test(tt_list=chunk[1],sess=sess,accuracy=accuracy,x=x,y_=y_,scale=SCALE, crop=CROP,show=SHOW,filepath=TRAIN_DATA_PATH))
 
     pickle_results(TEST_CSV,test_results)
 if __name__ == '__main__':
