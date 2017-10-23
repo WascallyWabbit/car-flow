@@ -288,7 +288,7 @@ def main():
     test_results=[]
     for chunk in zip(trainer,tester):
         train(tr_list=chunk[0],train_step=train_step,epochs=EPOCHS,numclasses=NUMCLASSES,sess=sess,x=x,y_=y_,crop=CROP,show=SHOW,scale=SCALE,filepath=TRAIN_DATA_PATH)
-        test_results.append(test(tt_list=chunk[1],sess=sess,accuracy=accuracy,x=x,y_=y_,scale=SCALE, crop=CROP,show=SHOW,filepath=TRAIN_DATA_PATH))
+        test_results.append(test(tt_list=chunk[1],sess=sess,accuracy=accuracy,x=x,y_=y_,scale=SCALE, crop=CROP,show=SHOW,filepath=TEST_DATA_PATH))
 
     pickle_results(TEST_CSV,test_results)
 if __name__ == '__main__':
