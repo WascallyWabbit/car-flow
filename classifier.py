@@ -1,3 +1,175 @@
+<<<<<<< HEAD
+# <editor-fold desc="Imports">
+import numpy as np
+import tensorflow as tf
+import os
+import random
+import utilities as ut
+import mnist
+import carvana
+
+
+def get_tensor_list(numclasses=10,path='/Users/Eric Fowler/Downloads/mnist/trainingSet/', num=None):
+
+    files = os.listdir(path)
+
+    if files == []:
+        return None
+
+    jpgs = [f for f in files if f.endswith('jpg')]
+    nums = [m.split('_')[1] for m in jpgs]
+    nums = [n.split('.')[0] for n in nums]
+    nums = np.asarray(nums, dtype=np.int32) - 1
+    labels = np.zeros((len(nums), numclasses))
+    labels[np.arange(len(nums)), nums] = 1
+
+    if num == None:
+        num = len(jpgs)
+
+    return (list(zip(jpgs[:num], labels[:num])))
+
+def train(train_step, sess, tr_list,x,y_,epochs,numclasses,show,crop,filepath,scale=1.0):
+    idx=0
+    print('Training, %d datums, %d epochs' %(len(tr_list), epochs) )
+    for epoch in range(epochs):
+        train_features = []
+        train_labels = []
+        items = len(tr_list)
+        for filename, labels_onehot in tr_list:
+            showChild = False and show
+            if idx >= 0 and idx < numclasses:
+                showChild = True and show
+
+                if idx >= 0 and idx < numclasses:
+                    showChild = True and show
+
+            train_features.append(ut.read_image(filepath, filename, scale=scale, show=showChild,crop=crop))
+            train_labels.append(labels_onehot)
+            #take # of pixels from size of 1st image
+            if idx == 0:
+                NUMPIXELS=len(train_features[0])
+
+            idx+=1
+        train_step.run(feed_dict={x: train_features, y_: train_labels})
+
+def test(tt_list, sess, accuracy,x,y_,filepath,scale,crop,show):
+    idx = 0
+    results = []
+    test_features = []
+    test_labels = []
+
+    for filename, labels_onehot in tt_list:
+        test_features.append(ut.read_image(filepath, filename, scale=scale, crop=crop,show=show))
+        test_labels.append(labels_onehot)
+        idx += 1
+
+    test_result = sess.run(accuracy, feed_dict={x: test_features, y_: test_labels})
+
+    print('Testing:%d items, result (%02.12f)' % (len(tt_list), test_result))
+    results.append(test_result)
+    return results
+#
+# Create the model
+# set up to feed an array of images [images, size_of_image]
+def make_graph(numpixels, numclasses, minimize='cross', train_step='sgd'):
+    x = tf.placeholder(tf.float32, [None,numpixels])
+
+    #variables for computation
+    #2d array of weights,[pixels, classes]
+    W= tf.get_variable("W",initializer=tf.zeros([numpixels,numclasses]))
+
+    #1d array of bias vars
+    b = tf.get_variable("b",initializer=tf.zeros(numclasses))
+    #the array of 'answers' produced by fxn. of W, x & b, a 1xNUMCLASSES array
+    y = tf.nn.softmax(tf.matmul(x, W) + b,name="softmaxxx")
+
+    # Define loss and optimizer
+    y_ = tf.placeholder(tf.float32, [None,numclasses],name="y_")
+
+    if minimize == 'simple':
+        cross_entropy = tf.reduce_mean(-tf.reduce_sum(y_ * tf.log(y), reduction_indices=[1]))
+    elif minimize== 'cross':
+        cross_entropy = tf.reduce_mean(tf.nn.softmax_cross_entropy_with_logits(labels=y_, logits=y))
+
+    if train_step== 'sgd':
+        train_step = tf.train.GradientDescentOptimizer(0.1).minimize(cross_entropy)
+    elif train_step == 'adam':
+        train_step = tf.train.AdamOptimizer(1e-4).minimize(cross_entropy)
+
+    sess = tf.InteractiveSession(config = tf.ConfigProto(log_device_placement=True))
+    tf.global_variables_initializer().run(session=sess)
+
+    correct_prediction = tf.equal(tf.argmax(y,1), tf.argmax(y_,1), name='correct_prediction')
+    accuracy = tf.reduce_mean(tf.cast(correct_prediction, tf.float32, name='accuracy'))
+
+    return x,y,y_,train_step,sess,accuracy
+
+# <editor-fold desc="Main">
+def main():
+
+    # <editor-fold desc="Process parameters into globals">
+    FLAGS, unparsed = ut.parseArgs()
+    TARGET      = FLAGS.target
+    ENVIRONMENT = FLAGS.env
+    NUMCLASSES  = FLAGS.numclasses
+    CROP        = FLAGS.crop
+    SHOW        = FLAGS.show
+    SCALE       = FLAGS.scale
+    EPOCHS      = FLAGS.epochs
+    CHUNKS      = FLAGS.chunks
+    TRAIN_DATA_PATH     = FLAGS.train_data_path
+    TEST_DATA_PATH      = FLAGS.test_data_path
+    SAMPLE_FILE = TRAIN_DATA_PATH + FLAGS.sample
+    TB_DIR      = FLAGS.tb_dir
+    NUMPIXELS   = ut.get_pixels(crop=CROP, filename=SAMPLE_FILE)
+    MINIMIZE    = FLAGS.minimize
+    TRAIN_STEP  = FLAGS.train_step
+    TEST_CSV    = FLAGS.test_csv
+    NUM_TRAIN_IMAGES      = FLAGS.num_train_images
+    NUM_TEST_IMAGES      = FLAGS.num_test_images
+    MODEL       = FLAGS.model
+    # </editor-fold>
+    # <editor-fold desc="Get lists of tensors for train+test step">
+    tensor_list = None
+    if TARGET == 'mnist':
+        tensor_list=mnist.get_mnist_train_tensor_list(numclasses=NUMCLASSES, path=TRAIN_DATA_PATH, num=NUM_TRAIN_IMAGES)
+        random.shuffle(tensor_list)
+        tensor_list_len = int(len(tensor_list))
+        training_list = tensor_list[:int(7*tensor_list_len/8)]
+        testing_list = tensor_list[int(7*tensor_list_len/8):]
+
+
+    elif TARGET == 'carvana':
+        training_list = get_tensor_list(numclasses=NUMCLASSES, path=TRAIN_DATA_PATH, num=NUM_TRAIN_IMAGES)
+        testing_list = carvana.get_carvana_test_tensor_list(path=TEST_DATA_PATH, num=NUM_TEST_IMAGES)
+        random.shuffle(training_list)
+        random.shuffle(testing_list)
+
+    x,y,y_,train_step,sess,accuracy=make_graph(NUMPIXELS,NUMCLASSES,minimize=MINIMIZE,train_step=TRAIN_STEP)
+    # </editor-fold>
+
+    sum_writer = tf.summary.FileWriter(TB_DIR, sess.graph)
+
+    # <editor-fold desc="Train+test">
+    trainer = [training_list[i:i+len(training_list)//CHUNKS]    for i in range(0,len(training_list),len(training_list)//CHUNKS)]
+    tester  = [testing_list [i:i+len(testing_list)//CHUNKS]     for i in range(0,len(testing_list), len(testing_list)//CHUNKS)]
+    test_results=[]
+    for chunk in zip(trainer,tester):
+        train(tr_list=chunk[0],train_step=train_step,epochs=EPOCHS,numclasses=NUMCLASSES,sess=sess,x=x,y_=y_,crop=CROP,show=SHOW,scale=SCALE,filepath=TRAIN_DATA_PATH)
+        test_results.append(test(tt_list=chunk[1],sess=sess,accuracy=accuracy,x=x,y_=y_,scale=SCALE, crop=CROP,show=SHOW,filepath=TEST_DATA_PATH))
+    # </editor-fold>
+
+    ut.pickle_results(TEST_CSV,test_results)
+
+if __name__ == '__main__':
+    main()
+# </editor-fold>
+
+
+
+
+
+=======
 import numpy as np
 import tensorflow as tf
 import os
@@ -283,3 +455,4 @@ if __name__ == '__main__':
 
 
 
+>>>>>>> 47a0fbc59bb525b1ff1630f4653ad0e3097f3711
